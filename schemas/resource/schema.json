@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mcp-poste:resource:schema:v1",
+  "title": "Resource Schema",
+  "description": "A discovered resource linked to the CV or job offer. Resources are found during Stage 1 and consulted during Stage 2.",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "urn:mcp-poste:meta:meta-schema:v1#/properties/meta" },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "resource_id": { "type": "string", "format": "uuid" },
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "company_profile", "company_news", "company_culture",
+            "industry_report", "skill_reference", "certification_info",
+            "salary_benchmark", "job_market_data", "candidate_public_profile",
+            "technology_reference", "regulation", "custom"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "mcp_id": { "type": "string" },
+            "search_id": { "type": "string" },
+            "url": { "type": "string" },
+            "method": { "type": "string", "enum": ["web_search", "mcp_tool", "api_call", "scrape", "nlp_extract"] }
+          },
+          "required": ["method"]
+        },
+        "content": {
+          "type": "object",
+          "properties": {
+            "raw": { "type": "string" },
+            "summary": { "type": "string" },
+            "structured_data": { "type": "object" },
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entity": { "type": "string" },
+                  "type": { "type": "string" },
+                  "relevance": { "type": "string", "enum": ["high", "medium", "low"] }
+                }
+              }
+            },
+            "language": { "type": "string" }
+          }
+        },
+        "relevance": {
+          "type": "object",
+          "properties": {
+            "to_job": { "type": "number", "minimum": 0, "maximum": 1 },
+            "to_candidate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "overall": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "resource_id": { "type": "string" },
+              "relation": {
+                "type": "string",
+                "enum": ["derived_from", "complements", "contradicts", "validates", "extends"]
+              }
+            },
+            "required": ["resource_id", "relation"]
+          },
+          "description": "Links to other resources (for dependency graph)"
+        },
+        "stage": { "type": "string", "enum": ["stage_1", "stage_2"] },
+        "status": {
+          "type": "string",
+          "enum": ["discovered", "fetched", "parsed", "enriched", "validated", "failed"]
+        }
+      },
+      "required": ["resource_id", "name", "type", "source", "stage", "status"]
+    }
+  },
+  "required": ["meta", "resource"]
+}

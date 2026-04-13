@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mcp-poste:search:schema:v1",
+  "title": "Search Schema",
+  "description": "Defines a search operation and its results — web, API, or MCP-based",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "urn:mcp-poste:meta:meta-schema:v1#/properties/meta" },
+    "search": {
+      "type": "object",
+      "properties": {
+        "search_id": { "type": "string", "format": "uuid" },
+        "query": { "type": "string" },
+        "source_type": {
+          "type": "string",
+          "enum": ["web", "mcp", "claude_api", "local", "custom"]
+        },
+        "source_id": { "type": "string", "description": "MCP ID or source identifier" },
+        "stage": {
+          "type": "string",
+          "enum": ["stage_1_discovery", "stage_2_analysis"],
+          "description": "Pipeline stage this search belongs to"
+        },
+        "intent": {
+          "type": "string",
+          "description": "Why this search was triggered (e.g., company_info, skill_validation)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "completed", "failed", "empty"]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "result_id": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string" },
+              "url": { "type": "string" },
+              "relevance_score": { "type": "number", "minimum": 0, "maximum": 1 },
+              "content_type": {
+                "type": "string",
+                "enum": ["text", "html", "json", "structured", "raw"]
+              },
+              "extracted_entities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entity": { "type": "string" },
+                    "type": { "type": "string" },
+                    "confidence": { "type": "number" }
+                  }
+                }
+              }
+            },
+            "required": ["result_id", "title"]
+          }
+        },
+        "result_count": { "type": "integer", "minimum": 0 },
+        "searched_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "integer" }
+      },
+      "required": ["search_id", "query", "source_type", "stage", "status"]
+    }
+  },
+  "required": ["meta", "search"]
+}

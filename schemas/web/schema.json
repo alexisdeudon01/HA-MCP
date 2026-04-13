@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mcp-poste:web:schema:v1",
+  "title": "Web Data Schema",
+  "description": "Structured representation of web-sourced data (pages, search results, API responses)",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "urn:mcp-poste:meta:meta-schema:v1#/properties/meta" },
+    "web": {
+      "type": "object",
+      "properties": {
+        "fetch_id": { "type": "string", "format": "uuid" },
+        "url": { "type": "string", "format": "uri" },
+        "method": {
+          "type": "string",
+          "enum": ["search", "fetch", "scrape", "api_call"]
+        },
+        "source_mcp": { "type": "string", "description": "MCP that fetched this data" },
+        "http_status": { "type": "integer" },
+        "content": {
+          "type": "object",
+          "properties": {
+            "raw_html": { "type": "string" },
+            "extracted_text": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "language": { "type": "string" }
+          }
+        },
+        "nlp": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string" },
+            "key_topics": { "type": "array", "items": { "type": "string" } },
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "type": { "type": "string", "enum": ["person", "organization", "location", "skill", "technology", "date", "money", "other"] },
+                  "confidence": { "type": "number" }
+                }
+              }
+            },
+            "sentiment": { "type": "string", "enum": ["positive", "negative", "neutral", "mixed"] },
+            "relevance_to_job": { "type": "number", "minimum": 0, "maximum": 1 },
+            "relevance_to_candidate": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "description": "NLP analysis of the web content"
+        },
+        "fetched_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "integer" }
+      },
+      "required": ["fetch_id", "url", "method"]
+    }
+  },
+  "required": ["meta", "web"]
+}

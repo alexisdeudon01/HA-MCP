@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mcp-poste:mcp_config:schema:v1",
+  "title": "MCP Config Schema",
+  "description": "Dynamic MCP configuration — MCPs can be added, tested, enabled, or disabled at runtime",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "urn:mcp-poste:meta:meta-schema:v1#/properties/meta" },
+    "mcp_config": {
+      "type": "object",
+      "properties": {
+        "config_id": { "type": "string", "format": "uuid" },
+        "mcps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mcp_id": { "type": "string" },
+              "name": { "type": "string" },
+              "source": {
+                "type": "string",
+                "enum": ["builtin", "discovered", "claude_suggested", "user_added"]
+              },
+              "status": {
+                "type": "string",
+                "enum": ["active", "testing", "failed", "disabled", "excluded"]
+              },
+              "requires_auth": { "type": "boolean" },
+              "auth_key_name": { "type": "string" },
+              "capabilities": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" },
+                    "tested": { "type": "boolean" },
+                    "test_result": { "type": "string", "enum": ["pass", "fail", "untested"] }
+                  },
+                  "required": ["name"]
+                }
+              },
+              "added_at": { "type": "string", "format": "date-time" },
+              "added_by": { "type": "string", "enum": ["system", "claude", "user"] },
+              "test_log": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "tool": { "type": "string" },
+                    "result": { "type": "string", "enum": ["pass", "fail"] },
+                    "error": { "type": "string" },
+                    "duration_ms": { "type": "integer" }
+                  }
+                }
+              }
+            },
+            "required": ["mcp_id", "name", "status"]
+          }
+        },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["config_id", "mcps"]
+    }
+  },
+  "required": ["meta", "mcp_config"]
+}

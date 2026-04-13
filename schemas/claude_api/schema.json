@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mcp-poste:claude_api:schema:v1",
+  "title": "Claude API Schema",
+  "description": "Tracks all Claude API interactions — prompts, responses, token usage, and decisions",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "urn:mcp-poste:meta:meta-schema:v1#/properties/meta" },
+    "claude_api": {
+      "type": "object",
+      "properties": {
+        "call_id": { "type": "string", "format": "uuid" },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "mcp_selection", "structuration", "analysis", "generation",
+            "resource_evaluation", "nlp_extraction", "prompt_building", "custom"
+          ]
+        },
+        "stage": { "type": "string", "enum": ["stage_1", "stage_2", "pre_pipeline"] },
+        "model": { "type": "string" },
+        "system_prompt": { "type": "string" },
+        "user_prompt": { "type": "string" },
+        "response": {
+          "type": "object",
+          "properties": {
+            "raw_text": { "type": "string" },
+            "parsed_json": { "type": "object" },
+            "parse_success": { "type": "boolean" }
+          }
+        },
+        "tokens": {
+          "type": "object",
+          "properties": {
+            "input_tokens": { "type": "integer" },
+            "output_tokens": { "type": "integer" },
+            "cache_read_tokens": { "type": "integer" },
+            "cache_creation_tokens": { "type": "integer" }
+          }
+        },
+        "duration_ms": { "type": "integer" },
+        "status": {
+          "type": "string",
+          "enum": ["success", "error", "timeout", "rate_limited"]
+        },
+        "error": { "type": "string" },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "decision": { "type": "string" },
+              "rationale": { "type": "string" },
+              "action": { "type": "string" }
+            }
+          },
+          "description": "Decisions made by Claude (e.g., which MCPs to add, which resources to fetch)"
+        }
+      },
+      "required": ["call_id", "purpose", "stage", "model", "status"]
+    }
+  },
+  "required": ["meta", "claude_api"]
+}
