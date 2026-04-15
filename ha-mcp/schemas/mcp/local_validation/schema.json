@@ -1,0 +1,75 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:local_validation:v1",
+
+  "mcp_id": "local_validation",
+  "name": "Schema Validator",
+  "version": "1.0.0",
+  "description": "Validation locale de données JSON contre un schema JSON Schema. Garantit l'intégrité des objets métier à chaque étape du pipeline.",
+  "category": "validation",
+  "tags": ["local", "free", "validation", "schema"],
+
+  "auth": {
+    "required": false,
+    "type": "none"
+  },
+
+  "probe": {
+    "tool": "validate_json_schema",
+    "args": {
+      "data": {},
+      "schema_name": "meta"
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 500
+  },
+
+  "tools": [
+    {
+      "name": "validate_json_schema",
+      "description": "Valide un objet JSON contre un schema nommé du registre HA-MCP. Retourne valid=true/false + liste des erreurs.",
+      "capability": "validation",
+      "input": {
+        "data": {
+          "type": "object",
+          "description": "Objet JSON à valider",
+          "required": true
+        },
+        "schema_name": {
+          "type": "string",
+          "description": "Nom du schema dans le registre (ex: job, candidate, analysis)",
+          "required": true,
+          "enum": ["meta", "input", "extraction", "job", "candidate", "search", "resource", "mcp_config", "analysis", "generation", "grand_meta", "pipeline"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultat de validation",
+        "properties": {
+          "valid":   { "type": "boolean" },
+          "errors":  { "type": "array", "description": "Liste des erreurs de validation" },
+          "schema":  { "type": "string" }
+        }
+      },
+      "example": {
+        "call": { "data": { "title": "Dev Python" }, "schema_name": "job" },
+        "response": { "valid": false, "errors": ["'company' is required"] }
+      },
+      "timeout_ms": 1000
+    }
+  ],
+
+  "capabilities": ["validation"],
+  "pipeline_stages": ["1.2", "1.4", "2.3", "2.4", "2.55", "2.6"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "degrade",
+    "degradation_message": "Validation schema désactivée — données non vérifiées pour cette étape"
+  },
+
+  "metadata": {
+    "local": true,
+    "free": true
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:notion_api:v1",
+
+  "mcp_id": "notion_api",
+  "name": "Notion",
+  "version": "1.0.0",
+  "description": "Stockage et lecture d'analyses dans Notion. Permet de persister les rapports et de retrouver des analyses passées sur une entreprise ou un poste.",
+  "category": "enrichissement",
+  "tags": ["storage", "cloud", "notion", "knowledge-base"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "NOTION_API_KEY",
+    "key_header": "Authorization"
+  },
+
+  "probe": {
+    "tool": "notion_search",
+    "args": { "query": "test", "page_size": 1 },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "notion_search",
+      "description": "Recherche dans un workspace Notion par mot-clé. Retourne les pages et bases de données correspondantes.",
+      "capability": "enrichissement",
+      "input": {
+        "query": {
+          "type": "string",
+          "description": "Terme de recherche dans Notion",
+          "required": true,
+          "example": "Société Générale analyse candidature"
+        },
+        "filter_type": {
+          "type": "string",
+          "description": "Filtrer par type d'objet Notion",
+          "required": false,
+          "enum": ["page", "database"],
+          "default": "page"
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Nombre max de résultats",
+          "required": false,
+          "default": 10
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultats de recherche Notion",
+        "properties": {
+          "results": { "type": "array" },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "timeout_ms": 10000
+    },
+    {
+      "name": "notion_create_page",
+      "description": "Crée une nouvelle page dans une base de données Notion pour stocker un rapport d'analyse.",
+      "capability": "storage",
+      "input": {
+        "database_id": {
+          "type": "string",
+          "description": "ID de la base de données Notion cible",
+          "required": true
+        },
+        "title": {
+          "type": "string",
+          "description": "Titre de la page",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "description": "Contenu Markdown à écrire dans la page",
+          "required": false
+        },
+        "properties": {
+          "type": "object",
+          "description": "Propriétés de la base de données à remplir",
+          "required": false
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Page créée",
+        "properties": {
+          "id":  { "type": "string" },
+          "url": { "type": "string" }
+        }
+      },
+      "timeout_ms": 15000
+    }
+  ],
+
+  "capabilities": ["enrichissement", "storage"],
+  "pipeline_stages": ["2.1", "2.6"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 1000,
+    "on_failure": "degrade",
+    "degradation_message": "Notion indisponible — stockage des analyses désactivé pour cette session"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "docs": "https://developers.notion.com",
+    "rate_limits": {
+      "requests_per_minute": 30
+    }
+  }
+}

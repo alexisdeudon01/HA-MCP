@@ -1,0 +1,90 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:openai_gpt:v1",
+
+  "mcp_id": "openai_gpt",
+  "name": "OpenAI GPT API",
+  "version": "1.0.0",
+  "description": "LLM GPT via l'API OpenAI. Utilisé comme alternative à Claude pour la structuration et l'analyse.",
+  "category": "raisonnement",
+  "tags": ["llm", "cloud", "openai", "alternative"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "OPENAI_API_KEY",
+    "key_header": "Authorization"
+  },
+
+  "probe": {
+    "tool": "chat_completion",
+    "args": {
+      "model": "gpt-4o-mini",
+      "messages": [{ "role": "user", "content": "ping" }],
+      "max_tokens": 5
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "chat_completion",
+      "description": "Appel au modèle GPT via l'API OpenAI. Interface compatible avec le format messages[].",
+      "capability": "raisonnement",
+      "input": {
+        "model": {
+          "type": "string",
+          "description": "Modèle GPT à utiliser",
+          "required": false,
+          "default": "gpt-4o",
+          "enum": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
+        },
+        "messages": {
+          "type": "array",
+          "description": "Liste de messages au format OpenAI [{role, content}]",
+          "required": true
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096
+        },
+        "response_format": {
+          "type": "string",
+          "description": "Format de la réponse",
+          "required": false,
+          "default": "json_object",
+          "enum": ["text", "json_object"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Réponse GPT parsée"
+      },
+      "timeout_ms": 60000
+    }
+  ],
+
+  "capabilities": ["raisonnement"],
+  "pipeline_stages": ["1.2", "2.4"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 2000,
+    "on_failure": "fallback",
+    "fallback_mcp_id": "anthropic_claude",
+    "degradation_message": "OpenAI GPT indisponible — fallback sur Claude"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "docs": "https://platform.openai.com/docs",
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 150000
+    }
+  }
+}

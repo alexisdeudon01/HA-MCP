@@ -1,0 +1,80 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:local_generation:v1",
+
+  "mcp_id": "local_generation",
+  "name": "Générateur Local",
+  "version": "1.0.0",
+  "description": "Génération locale de rapports depuis des templates. Produit du Markdown, JSON, ou HTML depuis des données structurées sans appel LLM.",
+  "category": "generation",
+  "tags": ["local", "free", "templating", "report"],
+
+  "auth": {
+    "required": false,
+    "type": "none"
+  },
+
+  "probe": {
+    "tool": "generate_report",
+    "args": { "template": "summary", "data": {} },
+    "expected_status": "any_non_error",
+    "timeout_ms": 1000
+  },
+
+  "tools": [
+    {
+      "name": "generate_report",
+      "description": "Génère un rapport depuis un template et des données structurées. Supporte Markdown et JSON.",
+      "capability": "generation",
+      "input": {
+        "template": {
+          "type": "string",
+          "description": "Nom du template à utiliser",
+          "required": true,
+          "enum": ["summary", "full_report", "json_export", "cover_letter"]
+        },
+        "data": {
+          "type": "object",
+          "description": "Données à injecter dans le template (job, candidate, analysis, grand_meta)",
+          "required": true
+        },
+        "format": {
+          "type": "string",
+          "description": "Format de sortie",
+          "required": false,
+          "default": "markdown",
+          "enum": ["markdown", "json", "html"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Rapport généré",
+        "properties": {
+          "content":  { "type": "string", "description": "Contenu du rapport" },
+          "format":   { "type": "string" },
+          "template": { "type": "string" }
+        }
+      },
+      "example": {
+        "call": { "template": "summary", "data": { "candidate_name": "Jean Dupont", "score": 0.82 }, "format": "markdown" },
+        "response": { "content": "# Rapport — Jean Dupont\nScore : 82%...", "format": "markdown" }
+      },
+      "timeout_ms": 3000
+    }
+  ],
+
+  "capabilities": ["generation"],
+  "pipeline_stages": ["2.6"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "fallback",
+    "fallback_mcp_id": "anthropic_claude",
+    "degradation_message": "Génération locale échouée — fallback sur génération via Claude"
+  },
+
+  "metadata": {
+    "local": true,
+    "free": true
+  }
+}

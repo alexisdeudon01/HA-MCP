@@ -3,6 +3,10 @@
 import json
 import logging
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path

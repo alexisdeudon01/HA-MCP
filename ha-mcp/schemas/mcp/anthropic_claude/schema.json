@@ -1,0 +1,141 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:anthropic_claude:v1",
+
+  "mcp_id": "anthropic_claude",
+  "name": "Anthropic Claude API",
+  "version": "1.0.0",
+  "description": "LLM Claude via l'API Anthropic. MCP principal du pipeline : structuration des données, analyse de candidature, NLP sur les ressources, et génération du rapport final.",
+  "category": "raisonnement",
+  "tags": ["llm", "cloud", "nlp", "structuration", "analysis", "generation"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "ANTHROPIC_API_KEY",
+    "key_header": "x-api-key"
+  },
+
+  "probe": {
+    "tool": "chat_completion",
+    "args": {
+      "model": "claude-haiku-4-5-20251001",
+      "system": "Réponds uniquement 'ok'.",
+      "prompt": "ping",
+      "max_tokens": 5
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "chat_completion",
+      "description": "Appel principal au modèle Claude. Prend un prompt système + prompt utilisateur et retourne une réponse texte ou JSON.",
+      "capability": "raisonnement",
+      "input": {
+        "model": {
+          "type": "string",
+          "description": "Identifiant du modèle Claude à utiliser",
+          "required": false,
+          "default": "claude-sonnet-4-20250514",
+          "enum": [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-sonnet-4-20250514",
+            "claude-haiku-4-5-20251001"
+          ]
+        },
+        "system": {
+          "type": "string",
+          "description": "Message système (instructions de comportement)",
+          "required": true,
+          "example": "Tu es un expert RH. Réponds uniquement en JSON strict."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Message utilisateur (la requête)",
+          "required": true
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Nombre maximum de tokens en sortie",
+          "required": false,
+          "default": 4096,
+          "example": 2000
+        },
+        "json_mode": {
+          "type": "boolean",
+          "description": "True pour forcer une réponse JSON parsée",
+          "required": false,
+          "default": true
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Réponse du modèle, parsée en JSON si json_mode=true, sinon string brut"
+      },
+      "example": {
+        "call": {
+          "model": "claude-sonnet-4-20250514",
+          "system": "Tu es un expert RH. Réponds en JSON.",
+          "prompt": "Structure cette offre d'emploi : ...",
+          "max_tokens": 2000
+        },
+        "response": { "title": "Développeur Python", "company": { "name": "Acme" } }
+      },
+      "timeout_ms": 60000
+    },
+    {
+      "name": "nlp_extract",
+      "description": "Extraction d'entités NLP depuis un texte : résumé, topics, entités nommées, sentiment.",
+      "capability": "nlp",
+      "input": {
+        "text": {
+          "type": "string",
+          "description": "Texte à analyser",
+          "required": true
+        },
+        "max_chars": {
+          "type": "integer",
+          "description": "Troncature du texte si trop long",
+          "required": false,
+          "default": 3000
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultat NLP structuré",
+        "properties": {
+          "summary":    { "type": "string" },
+          "key_topics": { "type": "array" },
+          "entities":   { "type": "array" },
+          "sentiment":  { "type": "string", "enum": ["positive", "neutral", "negative"] }
+        }
+      },
+      "timeout_ms": 30000
+    }
+  ],
+
+  "capabilities": ["raisonnement", "nlp", "structuration", "generation"],
+  "pipeline_stages": ["1.2", "1.3", "2.1", "2.2", "2.4", "2.55", "2.6"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 2000,
+    "on_failure": "abort_pipeline",
+    "degradation_message": "Clé ANTHROPIC_API_KEY manquante ou invalide — pipeline impossible sans LLM principal"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "homepage": "https://anthropic.com",
+    "docs": "https://docs.anthropic.com",
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 200000
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:google_drive:v1",
+
+  "mcp_id": "google_drive",
+  "name": "Google Drive",
+  "version": "1.0.0",
+  "description": "Lecture de fichiers PDF et documents directement depuis Google Drive. Permet d'ingérer des CV ou offres stockées dans Drive sans upload manuel.",
+  "category": "ingestion",
+  "tags": ["cloud", "google", "storage", "ingestion"],
+
+  "auth": {
+    "required": true,
+    "type": "oauth",
+    "key_name": "GOOGLE_DRIVE_TOKEN",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.readonly"
+    ]
+  },
+
+  "probe": {
+    "tool": "list_files",
+    "args": { "page_size": 1 },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Télécharge et lit le contenu d'un fichier depuis Google Drive par son ID.",
+      "capability": "ingestion",
+      "input": {
+        "file_id": {
+          "type": "string",
+          "description": "ID Google Drive du fichier",
+          "required": true,
+          "example": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+        },
+        "mime_type": {
+          "type": "string",
+          "description": "Type MIME attendu pour l'export (si Google Doc)",
+          "required": false,
+          "default": "application/pdf"
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Contenu du fichier téléchargé",
+        "properties": {
+          "content":    { "type": "string", "description": "Contenu binaire ou texte" },
+          "name":       { "type": "string" },
+          "size_bytes": { "type": "integer" },
+          "mime_type":  { "type": "string" }
+        }
+      },
+      "timeout_ms": 30000
+    },
+    {
+      "name": "list_files",
+      "description": "Liste les fichiers dans un dossier Google Drive ou dans My Drive.",
+      "capability": "file_read",
+      "input": {
+        "folder_id": {
+          "type": "string",
+          "description": "ID du dossier Drive (omit pour My Drive)",
+          "required": false
+        },
+        "query": {
+          "type": "string",
+          "description": "Filtre de recherche Drive (ex: mimeType='application/pdf')",
+          "required": false
+        },
+        "page_size": {
+          "type": "integer",
+          "required": false,
+          "default": 20
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Liste de fichiers",
+        "properties": {
+          "files":        { "type": "array" },
+          "next_page_token": { "type": "string" }
+        }
+      },
+      "timeout_ms": 15000
+    }
+  ],
+
+  "capabilities": ["ingestion", "file_read"],
+  "pipeline_stages": ["1.1"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 1000,
+    "on_failure": "degrade",
+    "degradation_message": "Google Drive inaccessible — utiliser l'upload manuel via le dashboard"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": true,
+    "docs": "https://developers.google.com/drive/api"
+  }
+}

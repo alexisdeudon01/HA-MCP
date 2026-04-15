@@ -1,0 +1,226 @@
+{
+  "$id": "urn:ha-mcp:mcp:filesystem_pipeline:v1",
+  "mcp_id": "filesystem-pipeline",
+  "name": "Filesystem Pipeline",
+  "version": "1.0.0",
+  "description": "Lecture, écriture et navigation du système de fichiers. Version étendue du serveur MCP officiel avec support tail/head, media, et tailles.",
+  "category": "ingestion",
+  "tags": ["local", "file", "free"],
+
+  "auth": { "required": false, "type": "none" },
+
+  "probe": {
+    "tool": "list_allowed_directories",
+    "args": {},
+    "timeout_ms": 1000
+  },
+
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read a file, optionally returning only first/last N lines",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "tail": { "type": "number", "description": "Return only last N lines" },
+          "head": { "type": "number", "description": "Return only first N lines" }
+        },
+        "required": ["path"]
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "name": "read_text_file",
+      "description": "Read a text file with encoding detection",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "tail": { "type": "number" },
+          "head": { "type": "number" }
+        },
+        "required": ["path"]
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "name": "read_media_file",
+      "description": "Read a media file (image, audio, etc.) as base64",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" }
+        },
+        "required": ["path"]
+      },
+      "timeout_ms": 10000
+    },
+    {
+      "name": "read_multiple_files",
+      "description": "Read multiple files at once",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Array of absolute file paths"
+          }
+        },
+        "required": ["paths"]
+      },
+      "timeout_ms": 10000
+    },
+    {
+      "name": "write_file",
+      "description": "Write content to a file",
+      "capability": "file_write",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path":    { "type": "string" },
+          "content": { "type": "string" }
+        },
+        "required": ["path", "content"]
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "name": "edit_file",
+      "description": "Edit a file by replacing specific text snippets",
+      "capability": "file_write",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "oldText": { "type": "string" },
+                "newText": { "type": "string" }
+              }
+            }
+          }
+        },
+        "required": ["path", "edits"]
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "name": "create_directory",
+      "description": "Create a directory (and parents if needed)",
+      "capability": "file_write",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      },
+      "timeout_ms": 2000
+    },
+    {
+      "name": "list_directory",
+      "description": "List contents of a directory",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      },
+      "timeout_ms": 3000
+    },
+    {
+      "name": "list_directory_with_sizes",
+      "description": "List directory contents with file sizes",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path":   { "type": "string" },
+          "sortBy": { "type": "string", "enum": ["name", "size"], "default": "name" }
+        },
+        "required": ["path"]
+      },
+      "timeout_ms": 3000
+    },
+    {
+      "name": "directory_tree",
+      "description": "Get recursive directory tree",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path":            { "type": "string" },
+          "excludePatterns": { "type": "array", "items": { "type": "string" }, "default": [] }
+        },
+        "required": ["path"]
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "name": "move_file",
+      "description": "Move or rename a file",
+      "capability": "file_write",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source":      { "type": "string" },
+          "destination": { "type": "string" }
+        },
+        "required": ["source", "destination"]
+      },
+      "timeout_ms": 3000
+    },
+    {
+      "name": "search_files",
+      "description": "Search for files matching a pattern in a directory",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path":            { "type": "string" },
+          "pattern":         { "type": "string" },
+          "excludePatterns": { "type": "array", "items": { "type": "string" }, "default": [] }
+        },
+        "required": ["path", "pattern"]
+      },
+      "timeout_ms": 10000
+    },
+    {
+      "name": "get_file_info",
+      "description": "Get metadata about a file (size, dates, permissions)",
+      "capability": "file_read",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      },
+      "timeout_ms": 2000
+    },
+    {
+      "name": "list_allowed_directories",
+      "description": "List directories that this server is allowed to access",
+      "capability": "file_read",
+      "inputSchema": { "type": "object", "properties": {} },
+      "timeout_ms": 1000
+    }
+  ],
+
+  "capabilities": ["ingestion", "file_read", "file_write"],
+  "pipeline_stages": ["1.1", "1.6", "2.6"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "abort_pipeline",
+    "degradation_message": "Filesystem inaccessible — vérifier les permissions"
+  },
+
+  "metadata": { "local": true, "free": true }
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:google_gemini:v1",
+
+  "mcp_id": "google_gemini",
+  "name": "Google Gemini",
+  "version": "1.0.0",
+  "description": "LLM Gemini via l'API Google. Alternative multimodale à Claude, capable de traiter texte et images.",
+  "category": "raisonnement",
+  "tags": ["llm", "cloud", "google", "multimodal", "alternative"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "GOOGLE_API_KEY",
+    "key_header": "x-goog-api-key"
+  },
+
+  "probe": {
+    "tool": "generate_content",
+    "args": {
+      "model": "gemini-1.5-flash",
+      "prompt": "ping",
+      "max_tokens": 5
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "generate_content",
+      "description": "Génère du contenu via Gemini. Supporte le texte, et potentiellement des images si le modèle est multimodal.",
+      "capability": "raisonnement",
+      "input": {
+        "model": {
+          "type": "string",
+          "description": "Modèle Gemini à utiliser",
+          "required": false,
+          "default": "gemini-1.5-pro",
+          "enum": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Prompt à envoyer au modèle",
+          "required": true
+        },
+        "system_instruction": {
+          "type": "string",
+          "description": "Instruction système",
+          "required": false
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Réponse Gemini"
+      },
+      "timeout_ms": 60000
+    }
+  ],
+
+  "capabilities": ["raisonnement"],
+  "pipeline_stages": ["1.2", "2.4"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 2000,
+    "on_failure": "fallback",
+    "fallback_mcp_id": "anthropic_claude",
+    "degradation_message": "Google Gemini indisponible — fallback sur Claude"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "docs": "https://ai.google.dev/docs",
+    "rate_limits": {
+      "requests_per_minute": 60
+    }
+  }
+}

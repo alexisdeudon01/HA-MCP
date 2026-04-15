@@ -1,0 +1,101 @@
+{
+  "$id": "urn:ha-mcp:mcp:sequential_thinking:v1",
+  "mcp_id": "sequential-thinking",
+  "name": "Sequential Thinking",
+  "version": "0.2.0",
+  "description": "Raisonnement séquentiel structuré. Décompose un problème en étapes de pensée numérotées, révisables et branchables.",
+  "category": "raisonnement",
+  "tags": ["reasoning", "local", "free"],
+
+  "auth": { "required": false, "type": "none" },
+
+  "probe": {
+    "tool": "sequentialthinking",
+    "args": {
+      "thought": "probe",
+      "nextThoughtNeeded": false,
+      "thoughtNumber": 1,
+      "totalThoughts": 1
+    },
+    "timeout_ms": 3000
+  },
+
+  "tools": [
+    {
+      "name": "sequentialthinking",
+      "description": "A detailed tool for dynamic and reflective problem-solving through thoughts. Each thought can build on, question, or revise previous insights.",
+      "capability": "reasoning",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "thought": {
+            "type": "string",
+            "description": "Your current thinking step"
+          },
+          "nextThoughtNeeded": {
+            "type": "boolean",
+            "description": "Whether another thought step is needed"
+          },
+          "thoughtNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Current thought number"
+          },
+          "totalThoughts": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Estimated total thoughts needed"
+          },
+          "isRevision": {
+            "type": "boolean",
+            "description": "Whether this revises previous thinking"
+          },
+          "revisesThought": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Which thought number is being reconsidered"
+          },
+          "branchFromThought": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Branching point thought number"
+          },
+          "branchId": {
+            "type": "string",
+            "description": "Branch identifier"
+          },
+          "needsMoreThoughts": {
+            "type": "boolean",
+            "description": "If more thoughts are needed beyond totalThoughts"
+          }
+        },
+        "required": ["thought", "nextThoughtNeeded", "thoughtNumber", "totalThoughts"]
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "thoughtNumber":       { "type": "number" },
+          "totalThoughts":       { "type": "number" },
+          "nextThoughtNeeded":   { "type": "boolean" },
+          "branches":            { "type": "array", "items": { "type": "string" } },
+          "thoughtHistoryLength":{ "type": "number" }
+        },
+        "required": ["thoughtNumber", "totalThoughts", "nextThoughtNeeded", "branches", "thoughtHistoryLength"]
+      },
+      "timeout_ms": 5000
+    }
+  ],
+
+  "capabilities": ["raisonnement", "reasoning"],
+  "pipeline_stages": ["1.3", "2.2", "2.4"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "degrade",
+    "degradation_message": "Sequential Thinking indisponible — raisonnement direct Claude uniquement"
+  },
+
+  "metadata": { "local": true, "free": true }
+}

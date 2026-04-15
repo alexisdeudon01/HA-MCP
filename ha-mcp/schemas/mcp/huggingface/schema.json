@@ -1,0 +1,101 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:huggingface:v1",
+
+  "mcp_id": "huggingface",
+  "name": "Hugging Face Inference",
+  "version": "1.0.0",
+  "description": "Accès aux modèles NLP spécialisés via l'Inference API Hugging Face : NER (Named Entity Recognition), classification de texte, embeddings.",
+  "category": "structuration",
+  "tags": ["nlp", "ner", "classification", "cloud", "ml"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "HF_API_KEY",
+    "key_header": "Authorization"
+  },
+
+  "probe": {
+    "tool": "ner_extraction",
+    "args": {
+      "text": "test probe",
+      "model": "Jean-Baptiste/roberta-large-ner-english"
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 10000
+  },
+
+  "tools": [
+    {
+      "name": "ner_extraction",
+      "description": "Extraction d'entités nommées (NER) depuis un texte. Identifie les personnes, organisations, lieux, compétences techniques.",
+      "capability": "nlp",
+      "input": {
+        "text": {
+          "type": "string",
+          "description": "Texte à analyser pour extraction NER",
+          "required": true,
+          "example": "Jean Dupont a travaillé chez Accenture à Paris pendant 5 ans."
+        },
+        "model": {
+          "type": "string",
+          "description": "Modèle HuggingFace à utiliser",
+          "required": false,
+          "default": "Jean-Baptiste/roberta-large-ner-english",
+          "enum": [
+            "Jean-Baptiste/roberta-large-ner-english",
+            "dslim/bert-base-NER",
+            "Babelscape/wikineural-multilingual-ner"
+          ]
+        }
+      },
+      "output": {
+        "type": "array",
+        "description": "Liste d'entités détectées",
+        "properties": {
+          "items": {
+            "type": "object",
+            "properties": {
+              "entity_group": { "type": "string", "enum": ["PER", "ORG", "LOC", "MISC"] },
+              "word":         { "type": "string" },
+              "score":        { "type": "number" },
+              "start":        { "type": "integer" },
+              "end":          { "type": "integer" }
+            }
+          }
+        }
+      },
+      "example": {
+        "call": { "text": "Jean Dupont a travaillé chez Accenture à Paris." },
+        "response": [
+          { "entity_group": "PER", "word": "Jean Dupont", "score": 0.99 },
+          { "entity_group": "ORG", "word": "Accenture", "score": 0.98 },
+          { "entity_group": "LOC", "word": "Paris", "score": 0.99 }
+        ]
+      },
+      "timeout_ms": 15000
+    }
+  ],
+
+  "capabilities": ["structuration", "nlp"],
+  "pipeline_stages": ["1.2", "2.1"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 2000,
+    "on_failure": "degrade",
+    "degradation_message": "Hugging Face indisponible — NER désactivé, structuration via Claude uniquement"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "homepage": "https://huggingface.co",
+    "docs": "https://huggingface.co/docs/api-inference",
+    "rate_limits": {
+      "requests_per_minute": 30
+    }
+  }
+}

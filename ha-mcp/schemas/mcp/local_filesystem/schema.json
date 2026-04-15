@@ -1,0 +1,106 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:local_filesystem:v1",
+
+  "mcp_id": "local_filesystem",
+  "name": "Filesystem Local",
+  "version": "1.0.0",
+  "description": "Lecture et écriture de fichiers sur le système de fichiers local. Toujours disponible, pas de réseau requis.",
+  "category": "ingestion",
+  "tags": ["local", "file", "free"],
+
+  "auth": {
+    "required": false,
+    "type": "none"
+  },
+
+  "probe": {
+    "tool": "read_file",
+    "args": { "path": "/dev/null" },
+    "expected_status": "any_non_error",
+    "timeout_ms": 1000
+  },
+
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Lit le contenu d'un fichier texte depuis le filesystem local",
+      "capability": "file_read",
+      "input": {
+        "path": {
+          "type": "string",
+          "description": "Chemin absolu vers le fichier à lire",
+          "required": true,
+          "example": "/share/ha-mcp/inputs/offer.pdf"
+        },
+        "encoding": {
+          "type": "string",
+          "description": "Encodage du fichier",
+          "required": false,
+          "default": "utf-8",
+          "enum": ["utf-8", "latin-1", "ascii"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Contenu du fichier",
+        "properties": {
+          "content": { "type": "string" },
+          "size_bytes": { "type": "integer" }
+        }
+      },
+      "example": {
+        "call": { "path": "/share/ha-mcp/inputs/offer.txt" },
+        "response": { "content": "Développeur Python...", "size_bytes": 1024 }
+      },
+      "timeout_ms": 2000
+    },
+    {
+      "name": "write_file",
+      "description": "Écrit du contenu dans un fichier sur le filesystem local",
+      "capability": "file_write",
+      "input": {
+        "path": {
+          "type": "string",
+          "description": "Chemin absolu de destination",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "description": "Contenu à écrire",
+          "required": true
+        },
+        "mode": {
+          "type": "string",
+          "description": "Mode d'écriture",
+          "required": false,
+          "default": "overwrite",
+          "enum": ["overwrite", "append"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Confirmation d'écriture",
+        "properties": {
+          "written_bytes": { "type": "integer" },
+          "path": { "type": "string" }
+        }
+      },
+      "timeout_ms": 2000
+    }
+  ],
+
+  "capabilities": ["ingestion", "file_read", "file_write"],
+  "pipeline_stages": ["1.1", "1.6"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "abort_pipeline",
+    "degradation_message": "Filesystem local inaccessible — vérifier les permissions /share/ha-mcp"
+  },
+
+  "metadata": {
+    "local": true,
+    "free": true
+  }
+}

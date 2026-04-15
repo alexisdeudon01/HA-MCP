@@ -1,14 +1,23 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Variables d'environnement — NE JAMAIS COMMITTER
 .env
+.env.*
+!.env.example
+
 .venv/
 venv/
 *.egg-info/
 dist/
 build/
+
+# Données runtime
 **/storage/inputs/
 **/storage/intermediate/
 **/storage/outputs/
 **/storage/logs/
+**/database/*.db
+
 .claude/

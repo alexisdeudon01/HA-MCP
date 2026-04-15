@@ -1,0 +1,103 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:local_reasoning:v1",
+
+  "mcp_id": "local_reasoning",
+  "name": "Raisonnement Local",
+  "version": "1.0.0",
+  "description": "Analyse et comparaison locale sans appel externe. Utile pour les opérations déterministes : comparaison de listes de compétences, scoring basique, diff de structures.",
+  "category": "raisonnement",
+  "tags": ["local", "free", "deterministic", "comparison"],
+
+  "auth": {
+    "required": false,
+    "type": "none"
+  },
+
+  "probe": {
+    "tool": "analyze_text",
+    "args": { "text": "test", "mode": "basic" },
+    "expected_status": "any_non_error",
+    "timeout_ms": 500
+  },
+
+  "tools": [
+    {
+      "name": "analyze_text",
+      "description": "Analyse basique d'un texte : compte de mots, détection de langue, extraction de mots-clés par fréquence.",
+      "capability": "raisonnement",
+      "input": {
+        "text": {
+          "type": "string",
+          "description": "Texte à analyser",
+          "required": true
+        },
+        "mode": {
+          "type": "string",
+          "description": "Mode d'analyse",
+          "required": false,
+          "default": "basic",
+          "enum": ["basic", "keywords", "readability"]
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultat de l'analyse",
+        "properties": {
+          "word_count":    { "type": "integer" },
+          "language":      { "type": "string" },
+          "top_keywords":  { "type": "array" }
+        }
+      },
+      "timeout_ms": 1000
+    },
+    {
+      "name": "compare_structures",
+      "description": "Compare deux structures JSON (ex: compétences requises vs compétences candidat) et retourne les intersections, manquants et extras.",
+      "capability": "raisonnement",
+      "input": {
+        "a": {
+          "type": "array",
+          "description": "Première liste (ex: compétences requises)",
+          "required": true
+        },
+        "b": {
+          "type": "array",
+          "description": "Deuxième liste (ex: compétences candidat)",
+          "required": true
+        },
+        "key": {
+          "type": "string",
+          "description": "Clé à comparer si les éléments sont des objets",
+          "required": false,
+          "example": "skill"
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultat de comparaison",
+        "properties": {
+          "match":   { "type": "array", "description": "Éléments en commun" },
+          "missing": { "type": "array", "description": "Dans A mais pas dans B" },
+          "extra":   { "type": "array", "description": "Dans B mais pas dans A" },
+          "score":   { "type": "number", "description": "Score de correspondance 0.0-1.0" }
+        }
+      },
+      "timeout_ms": 500
+    }
+  ],
+
+  "capabilities": ["raisonnement"],
+  "pipeline_stages": ["2.4", "2.5"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "degrade",
+    "degradation_message": "Raisonnement local indisponible — analyse via Claude uniquement"
+  },
+
+  "metadata": {
+    "local": true,
+    "free": true
+  }
+}

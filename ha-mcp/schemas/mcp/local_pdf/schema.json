@@ -1,0 +1,75 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:local_pdf:v1",
+
+  "mcp_id": "local_pdf",
+  "name": "PDF Extractor",
+  "version": "1.0.0",
+  "description": "Extraction de texte brut depuis des fichiers PDF via PyMuPDF (fitz). Fallback sur pdfplumber si PyMuPDF absent.",
+  "category": "ingestion",
+  "tags": ["local", "pdf", "extraction", "free"],
+
+  "auth": {
+    "required": false,
+    "type": "none"
+  },
+
+  "probe": {
+    "tool": "extract_pdf_text",
+    "args": { "path": "/dev/null" },
+    "expected_status": "any_non_error",
+    "timeout_ms": 2000
+  },
+
+  "tools": [
+    {
+      "name": "extract_pdf_text",
+      "description": "Extrait le texte page par page d'un fichier PDF. Retourne le texte brut, le nombre de pages et un checksum SHA-256.",
+      "capability": "ingestion",
+      "input": {
+        "path": {
+          "type": "string",
+          "description": "Chemin absolu vers le fichier PDF",
+          "required": true,
+          "example": "/share/ha-mcp/inputs/abc123/offer.pdf"
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Résultat de l'extraction PDF",
+        "properties": {
+          "raw_text":        { "type": "string", "description": "Texte brut complet" },
+          "pages":           { "type": "array",  "description": "Texte par page" },
+          "total_pages":     { "type": "integer" },
+          "total_chars":     { "type": "integer" },
+          "checksum_sha256": { "type": "string" }
+        }
+      },
+      "example": {
+        "call": { "path": "/share/ha-mcp/inputs/abc/offer.pdf" },
+        "response": {
+          "raw_text": "Développeur Python Senior...",
+          "total_pages": 2,
+          "total_chars": 3200,
+          "checksum_sha256": "a1b2c3..."
+        }
+      },
+      "timeout_ms": 15000
+    }
+  ],
+
+  "capabilities": ["ingestion"],
+  "pipeline_stages": ["1.1"],
+
+  "error_handling": {
+    "retry": false,
+    "on_failure": "abort_pipeline",
+    "degradation_message": "Extraction PDF impossible — vérifier que PyMuPDF ou pdfplumber est installé"
+  },
+
+  "metadata": {
+    "local": true,
+    "free": true,
+    "docs": "https://pymupdf.readthedocs.io"
+  }
+}

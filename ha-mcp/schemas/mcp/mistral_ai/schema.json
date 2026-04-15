@@ -1,0 +1,89 @@
+{
+  "$schema": "urn:ha-mcp:mcp:meta:v1",
+  "$id": "urn:ha-mcp:mcp:mistral_ai:v1",
+
+  "mcp_id": "mistral_ai",
+  "name": "Mistral AI",
+  "version": "1.0.0",
+  "description": "LLM Mistral via l'API Mistral AI. Option souveraine européenne (RGPD). Compétitif sur la structuration et l'analyse de texte.",
+  "category": "raisonnement",
+  "tags": ["llm", "cloud", "european", "rgpd", "alternative"],
+
+  "auth": {
+    "required": true,
+    "type": "api_key",
+    "key_name": "MISTRAL_API_KEY",
+    "key_header": "Authorization"
+  },
+
+  "probe": {
+    "tool": "chat_completion",
+    "args": {
+      "model": "mistral-small-latest",
+      "messages": [{ "role": "user", "content": "ping" }],
+      "max_tokens": 5
+    },
+    "expected_status": "any_non_error",
+    "timeout_ms": 8000
+  },
+
+  "tools": [
+    {
+      "name": "chat_completion",
+      "description": "Appel au modèle Mistral. Interface compatible OpenAI (messages[]). Idéal pour les contextes où la souveraineté des données est requise.",
+      "capability": "raisonnement",
+      "input": {
+        "model": {
+          "type": "string",
+          "description": "Modèle Mistral à utiliser",
+          "required": false,
+          "default": "mistral-large-latest",
+          "enum": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "mistral-7b-instruct"]
+        },
+        "messages": {
+          "type": "array",
+          "description": "Messages au format [{role, content}]",
+          "required": true
+        },
+        "max_tokens": {
+          "type": "integer",
+          "required": false,
+          "default": 4096
+        },
+        "response_format": {
+          "type": "object",
+          "description": "Format de réponse (ex: {type: 'json_object'})",
+          "required": false
+        }
+      },
+      "output": {
+        "type": "object",
+        "description": "Réponse Mistral"
+      },
+      "timeout_ms": 60000
+    }
+  ],
+
+  "capabilities": ["raisonnement"],
+  "pipeline_stages": ["1.2", "2.4"],
+
+  "error_handling": {
+    "retry": true,
+    "max_retries": 2,
+    "retry_delay_ms": 2000,
+    "on_failure": "fallback",
+    "fallback_mcp_id": "anthropic_claude",
+    "degradation_message": "Mistral AI indisponible — fallback sur Claude"
+  },
+
+  "metadata": {
+    "local": false,
+    "free": false,
+    "homepage": "https://mistral.ai",
+    "docs": "https://docs.mistral.ai",
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 100000
+    }
+  }
+}
