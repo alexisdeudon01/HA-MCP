@@ -16,14 +16,14 @@ PRAGMA foreign_keys = ON;
 -- ────────────────────────────────────────────────────────────
 -- 1. CAPABILITY — catalogue des capacités pipeline
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE capability (
+CREATE TABLE IF NOT EXISTS capability (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    NOT NULL UNIQUE,   -- web_search, raisonnement, ...
     description     TEXT    NOT NULL DEFAULT '',
     pipeline_stages TEXT    NOT NULL DEFAULT '[]'  -- JSON array ex: ["1.5","2.1"]
 );
 
-INSERT INTO capability (name, description, pipeline_stages) VALUES
+INSERT OR IGNORE INTO capability (name, description, pipeline_stages) VALUES
 ('ingestion',      'Lecture et extraction de données (PDF, fichiers, Drive)',         '["1.1"]'),
 ('structuration',  'Normalisation et structuration des données brutes',               '["1.2"]'),
 ('enrichissement', 'Enrichissement par données externes (APIs, bases)',               '["1.5","2.1"]'),
@@ -40,7 +40,7 @@ INSERT INTO capability (name, description, pipeline_stages) VALUES
 -- ────────────────────────────────────────────────────────────
 -- 2. MCP — registre des serveurs
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE mcp (
+CREATE TABLE IF NOT EXISTS mcp (
     mcp_id            TEXT    PRIMARY KEY,
     name              TEXT    NOT NULL,
     version           TEXT    NOT NULL DEFAULT '1.0.0',
@@ -72,7 +72,7 @@ CREATE TABLE mcp (
 -- ────────────────────────────────────────────────────────────
 -- 3. TRANSPORT — comment se connecter à un MCP
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE transport (
+CREATE TABLE IF NOT EXISTS transport (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     mcp_id      TEXT    NOT NULL,
 
@@ -100,7 +100,7 @@ CREATE TABLE transport (
 -- ────────────────────────────────────────────────────────────
 -- 4. TOOL — outils exposés par chaque MCP
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE tool (
+CREATE TABLE IF NOT EXISTS tool (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     mcp_id      TEXT    NOT NULL,
     name        TEXT    NOT NULL,
@@ -114,7 +114,7 @@ CREATE TABLE tool (
 -- ────────────────────────────────────────────────────────────
 -- 5. TOOL_PARAMETER — paramètres d'entrée de chaque outil
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE tool_parameter (
+CREATE TABLE IF NOT EXISTS tool_parameter (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     tool_id       INTEGER NOT NULL,
     name          TEXT    NOT NULL,
@@ -135,7 +135,7 @@ CREATE TABLE tool_parameter (
 -- ────────────────────────────────────────────────────────────
 -- 6. MCP_CAPABILITY — liaison MCP ↔ capability
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE mcp_capability (
+CREATE TABLE IF NOT EXISTS mcp_capability (
     mcp_id  TEXT    NOT NULL,
     cap_id  INTEGER NOT NULL,
     PRIMARY KEY (mcp_id, cap_id),
@@ -146,7 +146,7 @@ CREATE TABLE mcp_capability (
 -- ────────────────────────────────────────────────────────────
 -- 7. TOOL_CAPABILITY — liaison tool ↔ capability
 -- ────────────────────────────────────────────────────────────
-CREATE TABLE tool_capability (
+CREATE TABLE IF NOT EXISTS tool_capability (
     tool_id INTEGER NOT NULL,
     cap_id  INTEGER NOT NULL,
     PRIMARY KEY (tool_id, cap_id),
@@ -157,13 +157,13 @@ CREATE TABLE tool_capability (
 -- ────────────────────────────────────────────────────────────
 -- INDEXES
 -- ────────────────────────────────────────────────────────────
-CREATE INDEX idx_transport_mcp_id   ON transport(mcp_id);
-CREATE INDEX idx_transport_type     ON transport(type);
-CREATE INDEX idx_tool_mcp_id        ON tool(mcp_id);
-CREATE INDEX idx_tool_param_tool_id ON tool_parameter(tool_id);
-CREATE INDEX idx_mcp_cap_mcp        ON mcp_capability(mcp_id);
-CREATE INDEX idx_mcp_cap_cap        ON mcp_capability(cap_id);
-CREATE INDEX idx_tool_cap_tool      ON tool_capability(tool_id);
-CREATE INDEX idx_tool_cap_cap       ON tool_capability(cap_id);
-CREATE INDEX idx_mcp_plug_play      ON mcp(plug_and_play);
-CREATE INDEX idx_mcp_requires_auth  ON mcp(requires_auth);
+CREATE INDEX IF NOT EXISTS idx_transport_mcp_id   ON transport(mcp_id);
+CREATE INDEX IF NOT EXISTS idx_transport_type     ON transport(type);
+CREATE INDEX IF NOT EXISTS idx_tool_mcp_id        ON tool(mcp_id);
+CREATE INDEX IF NOT EXISTS idx_tool_param_tool_id ON tool_parameter(tool_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_cap_mcp        ON mcp_capability(mcp_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_cap_cap        ON mcp_capability(cap_id);
+CREATE INDEX IF NOT EXISTS idx_tool_cap_tool      ON tool_capability(tool_id);
+CREATE INDEX IF NOT EXISTS idx_tool_cap_cap       ON tool_capability(cap_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_plug_play      ON mcp(plug_and_play);
+CREATE INDEX IF NOT EXISTS idx_mcp_requires_auth  ON mcp(requires_auth);
