@@ -3,9 +3,10 @@ FROM ${BUILD_FROM}
 
 # ── Dépendances système ───────────────────────────────────────────────────────
 RUN apk add --no-cache \
-    # PDF processing
+    # C/C++ compilers (requis pour compiler PyMuPDF sur aarch64)
+    gcc g++ musl-dev python3-dev \
+    # PDF processing (mupdf système — évite de le recompiler depuis PyMuPDF)
     mupdf-tools mupdf-dev \
-    gcc musl-dev python3-dev \
     freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev jbig2dec-dev \
     # Node.js + npm pour les serveurs MCP stdio (npx)
     nodejs npm \
@@ -16,14 +17,16 @@ RUN apk add --no-cache \
 ENV NPM_CONFIG_CACHE=/tmp/npm-cache
 ENV NPM_CONFIG_PREFIX=/usr/local
 
+# ── PyMuPDF : utiliser le mupdf système (évite téléchargement + compilation) ──
+# PYMUPDF_SETUP_MUPDF_BUILD='' indique à PyMuPDF de ne pas recompiler mupdf
+ENV PYMUPDF_SETUP_MUPDF_BUILD=
+
 # ── Pré-installer les serveurs MCP stdio utilisés ────────────────────────────
-# (évite le téléchargement au premier démarrage)
 RUN npm install -g \
     duckduckgo-mcp-server \
     @modelcontextprotocol/server-sequential-thinking \
     @modelcontextprotocol/server-filesystem \
     @modelcontextprotocol/server-memory \
-    @modelcontextprotocol/server-puppeteer \
     @modelcontextprotocol/server-everything \
     @playwright/mcp \
     && npm cache clean --force
