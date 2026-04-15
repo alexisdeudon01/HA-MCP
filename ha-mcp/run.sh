@@ -4,14 +4,20 @@
 # HA-MCP Addon — Entry Point
 # ==============================================================================
 
-# ── Lockfile anti double-spawn ────────────────────────────────────────────────
+# ── Lockfile PID : évite le double-spawn, auto-nettoyé si stale ──────────────
 LOCKFILE="/tmp/ha-mcp.lock"
 if [ -f "${LOCKFILE}" ]; then
-    bashio::log.warning "HA-MCP already running (lockfile exists), exiting."
-    exit 0
+    OLD_PID=$(cat "${LOCKFILE}" 2>/dev/null)
+    if [ -n "${OLD_PID}" ] && kill -0 "${OLD_PID}" 2>/dev/null; then
+        bashio::log.warning "HA-MCP already running (PID ${OLD_PID}), exiting."
+        exit 0
+    else
+        bashio::log.info "Removing stale lockfile (PID ${OLD_PID} not found)."
+        rm -f "${LOCKFILE}"
+    fi
 fi
-touch "${LOCKFILE}"
-trap "rm -f ${LOCKFILE}" EXIT
+# Écrire le PID courant — après exec, Python hérite du même PID
+echo $$ > "${LOCKFILE}"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 declare LOG_LEVEL
