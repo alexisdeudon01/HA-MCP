@@ -1,3 +1,4 @@
 #!/usr/bin/with-contenv bashio
 # shellcheck shell=bash
-exec python3 -m app.server
+# Délègue au script principal qui charge les env vars depuis bashio::config
+exec /run.sh

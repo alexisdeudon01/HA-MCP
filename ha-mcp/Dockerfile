@@ -35,7 +35,9 @@ COPY database/ /database/
 COPY rootfs/   /
 
 COPY run.sh /
-RUN chmod a+x /run.sh
+RUN chmod a+x /run.sh \
+    && chmod a+x /etc/services.d/ha-mcp/run \
+    && chmod a+x /etc/services.d/ha-mcp/finish
 
 WORKDIR /
 
