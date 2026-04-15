@@ -49,7 +49,9 @@ def _load_mcp_registry(api_keys: dict | None = None) -> list[dict]:
     api_keys = api_keys or {}
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute("""
-        SELECT m.mcp_id, m.name, m.category, m.requires_auth,
+        SELECT m.mcp_id, m.name,
+               COALESCE(m.registry_category, 'enrichissement') as category,
+               m.requires_auth,
                m.auth_type, m.auth_key_name, m.description,
                t.type, t.command, t.args_json, t.url,
                GROUP_CONCAT(tl.name, '|') as tool_names
@@ -374,16 +376,19 @@ def api_db_mcps():
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute("""
-            SELECT m.mcp_id, m.name, m.category, m.description,
-                   m.plug_and_play, m.discovered_from,
+            SELECT m.mcp_id, m.name,
+                   COALESCE(m.registry_category, 'enrichissement') as category,
+                   m.description,
+                   COALESCE(m.plug_and_play, 0) as plug_and_play,
+                   m.discovered_from,
                    t.type  AS transport_type,
-                   COUNT(DISTINCT tl.tool_id) AS tools_count,
+                   COUNT(DISTINCT tl.id) AS tools_count,
                    GROUP_CONCAT(DISTINCT c.name) AS capabilities
             FROM mcp m
             LEFT JOIN transport t ON t.mcp_id = m.mcp_id
             LEFT JOIN tool tl     ON tl.mcp_id = m.mcp_id
             LEFT JOIN mcp_capability mc ON mc.mcp_id = m.mcp_id
-            LEFT JOIN capability c      ON c.capability_id = mc.capability_id
+            LEFT JOIN capability c      ON c.id = mc.cap_id
             GROUP BY m.mcp_id
             ORDER BY m.mcp_id
         """).fetchall()
