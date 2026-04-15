@@ -534,8 +534,9 @@ def api_db_graph():
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
-    logger.info("HA-MCP v2 server starting on port 8099")
-    app.run(host="0.0.0.0", port=8099, debug=False)
+    port = int(os.environ.get("HA_MCP_PORT", "8765"))
+    logger.info("HA-MCP v2 server starting on port %d", port)
+    app.run(host="0.0.0.0", port=port, debug=False)
 
 if __name__ == "__main__":
     main()

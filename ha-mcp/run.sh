@@ -4,6 +4,16 @@
 # HA-MCP Addon — Entry Point
 # ==============================================================================
 
+# ── Lockfile anti double-spawn ────────────────────────────────────────────────
+LOCKFILE="/tmp/ha-mcp.lock"
+if [ -f "${LOCKFILE}" ]; then
+    bashio::log.warning "HA-MCP already running (lockfile exists), exiting."
+    exit 0
+fi
+touch "${LOCKFILE}"
+trap "rm -f ${LOCKFILE}" EXIT
+
+# ── Config ────────────────────────────────────────────────────────────────────
 declare LOG_LEVEL
 declare STORAGE_PATH
 
@@ -17,6 +27,7 @@ bashio::log.info "Storage: ${STORAGE_PATH}"
 mkdir -p "${STORAGE_PATH}"/{inputs,outputs,logs,intermediate}
 
 # ── Variables d'environnement ─────────────────────────────────────────────────
+export HA_MCP_PORT=8765
 export HA_MCP_LOG_LEVEL="${LOG_LEVEL}"
 export HA_MCP_STORAGE_PATH="${STORAGE_PATH}"
 export HA_MCP_INGRESS_ENTRY="$(bashio::addon.ingress_entry)"
@@ -36,10 +47,9 @@ if bashio::config.has_value 'hf_api_key'; then
     export HF_API_KEY="$(bashio::config 'hf_api_key')"
 fi
 
-# ── DB path dans storage persistant ──────────────────────────────────────────
+# ── DB path ───────────────────────────────────────────────────────────────────
 export HA_MCP_DB_PATH="${STORAGE_PATH}/tool_v2.db"
 
-# Initialiser la DB (idempotent — IF NOT EXISTS dans le schema)
 bashio::log.info "Initializing database..."
 python3 -c "
 import sqlite3, os
@@ -53,7 +63,7 @@ print('Database ready:', db)
 "
 
 # ── Lancement du serveur ──────────────────────────────────────────────────────
-bashio::log.info "Starting web server on port 8099..."
+bashio::log.info "Starting web server on port 8765..."
 cd /
 export PYTHONPATH=/
 exec python3 -m app
