@@ -351,10 +351,13 @@ def api_db_summary():
         return jsonify({"error": "DB not found"}), 404
     conn = sqlite3.connect(DB_PATH)
     try:
-        nb_mcps       = conn.execute("SELECT COUNT(*) FROM mcp").fetchone()[0]
-        nb_tools      = conn.execute("SELECT COUNT(*) FROM tool").fetchone()[0]
-        nb_caps       = conn.execute("SELECT COUNT(*) FROM capability").fetchone()[0]
-        nb_calls      = conn.execute("SELECT COUNT(*) FROM call_history").fetchone()[0]
+        nb_mcps  = conn.execute("SELECT COUNT(*) FROM mcp").fetchone()[0]
+        nb_tools = conn.execute("SELECT COUNT(*) FROM tool").fetchone()[0]
+        nb_caps  = conn.execute("SELECT COUNT(*) FROM capability").fetchone()[0]
+        try:
+            nb_calls = conn.execute("SELECT COUNT(*) FROM call_history").fetchone()[0]
+        except Exception:
+            nb_calls = 0
     except Exception as e:
         conn.close()
         return jsonify({"error": str(e)}), 500
@@ -422,16 +425,16 @@ def api_db_tools():
     conn.row_factory = sqlite3.Row
     try:
         query = """
-            SELECT tl.tool_id, tl.mcp_id, tl.name, tl.description,
-                   COUNT(tp.param_id) AS params_count
+            SELECT tl.id, tl.mcp_id, tl.name, tl.description,
+                   COUNT(tp.id) AS params_count
             FROM tool tl
-            LEFT JOIN tool_parameter tp ON tp.tool_id = tl.tool_id
+            LEFT JOIN tool_parameter tp ON tp.tool_id = tl.id
         """
         params = []
         if mcp_filter:
             query += " WHERE tl.mcp_id = ?"
             params.append(mcp_filter)
-        query += " GROUP BY tl.tool_id ORDER BY tl.mcp_id, tl.name"
+        query += " GROUP BY tl.id ORDER BY tl.mcp_id, tl.name"
         rows = conn.execute(query, params).fetchall()
     except Exception as e:
         conn.close()
@@ -452,7 +455,7 @@ def api_db_history():
     conn.row_factory = sqlite3.Row
     try:
         query = """
-            SELECT call_id, mcp_id, tool_name, status,
+            SELECT id, mcp_id, tool_name, response_type AS status,
                    duration_ms, started_at, request_json, response_json
             FROM call_history
         """
@@ -486,9 +489,11 @@ def api_db_graph():
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute("""
-            SELECT m.mcp_id, m.name, m.plug_and_play, m.discovered_from,
+            SELECT m.mcp_id, m.name,
+                   COALESCE(m.plug_and_play, 0) as plug_and_play,
+                   m.discovered_from,
                    t.type AS transport_type,
-                   COUNT(DISTINCT tl.tool_id) AS tools_count
+                   COUNT(DISTINCT tl.id) AS tools_count
             FROM mcp m
             LEFT JOIN transport t  ON t.mcp_id = m.mcp_id
             LEFT JOIN tool tl      ON tl.mcp_id = m.mcp_id
@@ -499,7 +504,7 @@ def api_db_graph():
         caps_rows = conn.execute("""
             SELECT mc.mcp_id, GROUP_CONCAT(c.name) AS capabilities
             FROM mcp_capability mc
-            JOIN capability c ON c.capability_id = mc.capability_id
+            JOIN capability c ON c.id = mc.cap_id
             GROUP BY mc.mcp_id
         """).fetchall()
     except Exception as e:
