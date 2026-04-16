@@ -38,4 +38,4 @@ if [ -f venv/bin/activate ]; then
     source venv/bin/activate
 fi
 
-PYTHONPATH=. python -m app
+PYTHONPATH=. uvicorn app.server:app --host 0.0.0.0 --port "${HA_MCP_PORT:-8765}" --log-level "${HA_MCP_LOG_LEVEL:-debug}"

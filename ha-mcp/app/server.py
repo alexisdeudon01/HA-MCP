@@ -1,11 +1,10 @@
-"""HA-MCP v2: Flask web server with 2-stage pipeline, dynamic MCPs, and live dashboard."""
+"""HA-MCP v2: FastAPI web server with 2-stage pipeline, dynamic MCPs, and live dashboard."""
 
 import asyncio
 import json
 import logging
 import os
 import sqlite3
-import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,20 +17,23 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ── Sentry (optionnel — activé si SENTRY_DSN présent) ────────────────────────
 import sentry_sdk
-from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 _sentry_dsn = os.environ.get("SENTRY_DSN", "")
 if _sentry_dsn:
     sentry_sdk.init(
         dsn=_sentry_dsn,
-        integrations=[FlaskIntegration()],
+        integrations=[StarletteIntegration(), FastApiIntegration()],
         traces_sample_rate=0.1,
         environment=os.environ.get("HA_MCP_ENV", "production"),
     )
-    import logging
     logging.getLogger(__name__).info("Sentry initialized")
 
-from flask import Flask, Response, jsonify, request, render_template
+import uvicorn
+from fastapi import FastAPI, BackgroundTasks, Request, UploadFile, File, Query
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 
 from .mcp_orchestrator import MCPOrchestrator
 from .pipeline import PipelineEngine
@@ -52,8 +54,8 @@ SCHEMA_DIR   = Path(os.environ.get("HA_MCP_SCHEMA_DIR",
                str(Path(__file__).resolve().parent.parent / "schemas" / "mcp")))
 CLAUDE_CONFIG= Path.home() / ".claude" / "settings.json"
 
-app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+app = FastAPI(title="HA-MCP", version="2.0.0")
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 # ── Registry dynamique (lit la DB à chaque appel — hot reload) ────────────────
@@ -156,45 +158,58 @@ def _sync_claude_config(mcp_id: str, transport: dict) -> bool:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.route("/")
-def index():
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
     from .schema_registry import SchemaRegistry
     registry = SchemaRegistry(SCHEMAS_DIR)
     registry.load()
     api_keys = _load_api_keys()
-    return render_template(
+    return templates.TemplateResponse(
         "dashboard.html",
-        ingress=INGRESS_ENTRY,
-        storage=str(STORAGE_PATH),
-        schema_count=len(registry.list_schemas()),
-        catalog_json=json.dumps(_load_mcp_registry(api_keys)),
-        keys_json=json.dumps(api_keys),
+        {
+            "request":      request,
+            "ingress":      INGRESS_ENTRY,
+            "storage":      str(STORAGE_PATH),
+            "schema_count": len(registry.list_schemas()),
+            "catalog_json": json.dumps(_load_mcp_registry(api_keys)),
+            "keys_json":    json.dumps(api_keys),
+        },
     )
 
-@app.route("/api/health")
-def health():
-    return jsonify({"status": "ok", "addon": "ha-mcp", "version": "2.0.0", "timestamp": datetime.now(timezone.utc).isoformat()})
 
-@app.route("/api/schemas")
-def api_list_schemas():
+@app.get("/api/health")
+async def health():
+    return JSONResponse({
+        "status":    "ok",
+        "addon":     "ha-mcp",
+        "version":   "2.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+@app.get("/api/schemas")
+async def api_list_schemas():
     from .schema_registry import SchemaRegistry
     registry = SchemaRegistry(SCHEMAS_DIR)
     registry.load()
-    return jsonify({"schemas": registry.list_schemas()})
+    return JSONResponse({"schemas": registry.list_schemas()})
 
-@app.route("/api/mcps")
-def api_list_mcps():
+
+@app.get("/api/mcps")
+async def api_list_mcps():
     """Liste tous les MCPs depuis la DB (hot reload — sans redémarrage)."""
     api_keys = _load_api_keys()
-    return jsonify({"mcps": _load_mcp_registry(api_keys)})
+    return JSONResponse({"mcps": _load_mcp_registry(api_keys)})
 
-@app.route("/api/mcps/dynamic")
-def api_dynamic_mcps():
+
+@app.get("/api/mcps/dynamic")
+async def api_dynamic_mcps():
     manager = MCPManager(STORAGE_PATH, _load_api_keys())
-    return jsonify({"mcps": manager.get_all_mcps(), "config": manager.get_config()})
+    return JSONResponse({"mcps": manager.get_all_mcps(), "config": manager.get_config()})
 
-@app.route("/api/mcps/register", methods=["POST"])
-def api_register_mcp():
+
+@app.post("/api/mcps/register")
+async def api_register_mcp(request: Request):
     """
     Enregistre un nouveau MCP serveur à chaud (sans redémarrage).
 
@@ -217,33 +232,30 @@ def api_register_mcp():
       4. Écriture schema.json
       5. Sync ~/.claude/settings.json si demandé
     """
-    body = request.get_json()
+    body = await request.json()
     if not body or "mcp_id" not in body or "transport" not in body:
-        return jsonify({"error": "mcp_id and transport required"}), 400
+        return JSONResponse({"error": "mcp_id and transport required"}, status_code=400)
 
     mcp_id    = body["mcp_id"]
     transport = body["transport"]
     sync      = body.get("sync_claude", False)
 
-    async def _register():
+    try:
         from .mcp_orchestrator.mcp_executor import build_schema_from_server
-        return await build_schema_from_server(
+        schema = await build_schema_from_server(
             mcp_id=mcp_id,
             transport_conf=transport,
             db_path=DB_PATH,
             schema_dir=SCHEMA_DIR,
         )
-
-    try:
-        schema = asyncio.run(_register())
     except Exception as e:
         logger.exception("MCP registration failed")
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
 
     # Sync Claude config si demandé
     claude_synced = _sync_claude_config(mcp_id, transport) if sync else False
 
-    return jsonify({
+    return JSONResponse({
         "status":       "registered",
         "mcp_id":       mcp_id,
         "name":         schema.get("name"),
@@ -255,53 +267,32 @@ def api_register_mcp():
         "message":      f"MCP '{mcp_id}' ajouté en DB et disponible immédiatement",
     })
 
-@app.route("/api/keys", methods=["GET"])
-def api_get_keys():
+
+@app.get("/api/keys")
+async def api_get_keys():
     keys = _load_api_keys()
-    return jsonify({"keys": {k: "***" + v[-4:] if len(v) > 4 else "****" for k, v in keys.items()}})
+    masked = {k: "***" + v[-4:] if len(v) > 4 else "****" for k, v in keys.items()}
+    return JSONResponse({"keys": masked})
 
-@app.route("/api/keys", methods=["POST"])
-def api_save_keys():
-    keys = request.get_json()
-    if not isinstance(keys, dict): return jsonify({"error": "Expected JSON object"}), 400
+
+@app.post("/api/keys")
+async def api_save_keys(request: Request):
+    keys = await request.json()
+    if not isinstance(keys, dict):
+        return JSONResponse({"error": "Expected JSON object"}, status_code=400)
     _save_api_keys(keys)
-    return jsonify({"status": "saved", "key_count": len(keys)})
+    return JSONResponse({"status": "saved", "key_count": len(keys)})
 
-@app.route("/api/keys/<key_name>", methods=["DELETE"])
-def api_delete_key(key_name: str):
+
+@app.delete("/api/keys/{key_name}")
+async def api_delete_key(key_name: str):
     keys = _load_api_keys()
     keys.pop(key_name, None)
     _save_api_keys(keys)
-    return jsonify({"status": "deleted"})
+    return JSONResponse({"status": "deleted"})
 
-def _run_pipeline_thread(session_id: str, offer_path: str, cv_path: str, api_keys: dict):
-    """Lance le pipeline en thread background — libère Flask pour servir le SSE."""
-    _sessions[session_id] = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
-    try:
-        orchestrator = MCPOrchestrator(project_root=Path("/"))
-        orchestrator.initialize(session_id)
-        mcp_tools = _build_active_mcp_tools(api_keys)
-        orchestrator.discover_mcps(mcp_tools)
-        engine = PipelineEngine(orchestrator, STORAGE_PATH, api_keys=api_keys)
-        results = engine.run(offer_path, cv_path)
 
-        # Logger les appels MCP dans call_history
-        _log_pipeline_calls(session_id, results.get("events", []))
-
-        gen = _sessions[session_id] = {
-            "status": "completed" if results.get("steps", {}).get("2.6", {}).get("status") == "completed" else "failed",
-            "session_id":     session_id,
-            "steps":          results.get("steps", {}),
-            "events":         results.get("events", []),
-            "grand_meta":     results.get("grand_meta", {}),
-            "recommendation": results.get("steps", {}).get("2.6", {}).get("recommendation", "N/A"),
-            "overall_score":  results.get("steps", {}).get("2.6", {}).get("overall_score", 0),
-            "artifacts_count":results.get("steps", {}).get("2.6", {}).get("artifacts_count", 0),
-        }
-    except Exception as e:
-        logger.exception("Pipeline failed in thread")
-        _sessions[session_id] = {"status": "failed", "error": str(e), "session_id": session_id}
-
+# ── Pipeline ──────────────────────────────────────────────────────────────────
 
 def _log_pipeline_calls(session_id: str, events: list) -> None:
     """Enregistre les événements pipeline dans call_history."""
@@ -333,99 +324,157 @@ def _log_pipeline_calls(session_id: str, events: list) -> None:
         logger.warning("call_history log failed: %s", e)
 
 
-@app.route("/api/analyze", methods=["POST"])
-def analyze():
+def _run_pipeline_sync(session_id: str, offer_path: str, cv_path: str, api_keys: dict):
+    """Version synchrone du pipeline — exécutée dans un thread pool via run_in_executor."""
+    _sessions[session_id] = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        orchestrator = MCPOrchestrator(project_root=Path("/"))
+        orchestrator.initialize(session_id)
+        mcp_tools = _build_active_mcp_tools(api_keys)
+        orchestrator.discover_mcps(mcp_tools)
+        engine = PipelineEngine(orchestrator, STORAGE_PATH, api_keys=api_keys)
+        results = engine.run(offer_path, cv_path)
+
+        # Logger les appels MCP dans call_history
+        _log_pipeline_calls(session_id, results.get("events", []))
+
+        _sessions[session_id] = {
+            "status": "completed" if results.get("steps", {}).get("2.6", {}).get("status") == "completed" else "failed",
+            "session_id":     session_id,
+            "steps":          results.get("steps", {}),
+            "events":         results.get("events", []),
+            "grand_meta":     results.get("grand_meta", {}),
+            "recommendation": results.get("steps", {}).get("2.6", {}).get("recommendation", "N/A"),
+            "overall_score":  results.get("steps", {}).get("2.6", {}).get("overall_score", 0),
+            "artifacts_count":results.get("steps", {}).get("2.6", {}).get("artifacts_count", 0),
+        }
+    except Exception as e:
+        logger.exception("Pipeline failed in executor")
+        _sessions[session_id] = {"status": "failed", "error": str(e), "session_id": session_id}
+
+
+async def _run_pipeline(session_id: str, offer_path: str, cv_path: str, api_keys: dict):
+    """Lance _run_pipeline_sync dans le thread pool par défaut d'asyncio."""
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _run_pipeline_sync, session_id, offer_path, cv_path, api_keys)
+
+
+@app.post("/api/analyze")
+async def analyze(
+    background_tasks: BackgroundTasks,
+    offer_pdf: UploadFile = File(...),
+    cv_pdf: UploadFile = File(...),
+):
     """Lance le pipeline en background — retourne session_id immédiatement."""
-    if "offer_pdf" not in request.files or "cv_pdf" not in request.files:
-        return jsonify({"error": "Both PDF files required"}), 400
-    offer_file = request.files["offer_pdf"]
-    cv_file    = request.files["cv_pdf"]
-    if not offer_file.filename or not cv_file.filename:
-        return jsonify({"error": "Empty filenames"}), 400
+    if not offer_pdf.filename or not cv_pdf.filename:
+        return JSONResponse({"error": "Empty filenames"}, status_code=400)
 
     session_id = str(uuid.uuid4())
     upload_dir = STORAGE_PATH / "inputs" / session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    offer_path = upload_dir / f"offer_{offer_file.filename}"
-    cv_path    = upload_dir / f"cv_{cv_file.filename}"
-    offer_file.save(str(offer_path))
-    cv_file.save(str(cv_path))
+
+    offer_path = upload_dir / f"offer_{offer_pdf.filename}"
+    cv_path    = upload_dir / f"cv_{cv_pdf.filename}"
+
+    offer_path.write_bytes(await offer_pdf.read())
+    cv_path.write_bytes(await cv_pdf.read())
 
     api_keys = _load_api_keys()
 
-    # Lancer en background — Flask reste libre pour servir SSE
-    t = threading.Thread(
-        target=_run_pipeline_thread,
-        args=(session_id, str(offer_path), str(cv_path), api_keys),
-        daemon=True,
-    )
-    t.start()
+    background_tasks.add_task(_run_pipeline, session_id, str(offer_path), str(cv_path), api_keys)
 
-    # Retour immédiat avec le session_id
-    return jsonify({"session_id": session_id, "status": "running"})
+    return JSONResponse({"session_id": session_id, "status": "running"})
 
 
-@app.route("/api/analyze/status/<session_id>")
-def analyze_status(session_id: str):
+@app.get("/api/analyze/status/{session_id}")
+async def analyze_status(session_id: str):
     """Statut d'une analyse en cours ou terminée."""
     result = _sessions.get(session_id)
     if not result:
-        # Chercher dans les fichiers persistants
         result_path = STORAGE_PATH / "outputs" / f"result_{session_id}.json"
         if result_path.exists():
             with open(result_path) as f:
-                return jsonify({"status": "completed", **json.load(f)})
-        return jsonify({"status": "not_found"}), 404
-    return jsonify(result)
+                return JSONResponse({"status": "completed", **json.load(f)})
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return JSONResponse(result)
 
-@app.route("/api/events/<session_id>")
-def api_events(session_id: str):
+
+@app.get("/api/events/{session_id}")
+async def api_events(session_id: str):
     """SSE endpoint for live pipeline events."""
-    def stream():
+    async def event_stream():
         events_file = STORAGE_PATH / "logs" / f"pipeline_{session_id}.json"
         last_count = 0
-        while True:
+        max_wait   = 600   # 10 min timeout
+        waited     = 0.0
+
+        while waited < max_wait:
+            events: list = []
             if events_file.exists():
                 with open(events_file) as f:
                     events = json.load(f)
-                new_events = events[last_count:]
-                for ev in new_events:
+                for ev in events[last_count:]:
                     yield f"data: {json.dumps(ev)}\n\n"
                 last_count = len(events)
-            import time
-            time.sleep(0.5)
-    return Response(stream(), mimetype="text/event-stream")
 
-@app.route("/api/resources")
-def api_resources():
+            # Check if done
+            session = _sessions.get(session_id, {})
+            if session.get("status") in ("completed", "failed") and last_count >= len(events):
+                yield f"data: {json.dumps({'type': 'done', 'status': session.get('status')})}\n\n"
+                break
+
+            await asyncio.sleep(0.5)
+            waited += 0.5
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/resources")
+async def api_resources():
     manager = MCPManager(STORAGE_PATH, _load_api_keys())
-    return jsonify({"resources": manager.get_resources()})
+    return JSONResponse({"resources": manager.get_resources()})
 
-@app.route("/api/results/<session_id>")
-def get_results(session_id: str):
+
+@app.get("/api/results/{session_id}")
+async def get_results(session_id: str):
     result_path = STORAGE_PATH / "outputs" / f"result_{session_id}.json"
-    if not result_path.exists(): return jsonify({"error": f"No results for {session_id}"}), 404
-    with open(result_path) as f: return jsonify(json.load(f))
+    if not result_path.exists():
+        return JSONResponse({"error": f"No results for {session_id}"}, status_code=404)
+    with open(result_path) as f:
+        return JSONResponse(json.load(f))
 
-@app.route("/api/sessions")
-def list_sessions():
+
+@app.get("/api/sessions")
+async def list_sessions():
     outputs_dir = STORAGE_PATH / "outputs"
-    if not outputs_dir.exists(): return jsonify({"sessions": []})
+    if not outputs_dir.exists():
+        return JSONResponse({"sessions": []})
     sessions = []
     for f in sorted(outputs_dir.glob("result_*.json"), reverse=True):
-        sid = f.stem.replace("result_", "")
+        sid  = f.stem.replace("result_", "")
         stat = f.stat()
-        sessions.append({"session_id": sid, "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(), "size_bytes": stat.st_size})
-    return jsonify({"sessions": sessions})
+        sessions.append({
+            "session_id":  sid,
+            "created_at":  datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "size_bytes":  stat.st_size,
+        })
+    return JSONResponse({"sessions": sessions})
 
 
 # ── DB API endpoints ──────────────────────────────────────────────────────────
 
-@app.route("/api/db/summary")
-def api_db_summary():
+@app.get("/api/db/summary")
+async def api_db_summary():
     """Stats globales depuis tool_v2.db"""
     if not DB_PATH.exists():
-        return jsonify({"error": "DB not found"}), 404
+        return JSONResponse({"error": "DB not found"}, status_code=404)
     conn = sqlite3.connect(DB_PATH)
     try:
         nb_mcps  = conn.execute("SELECT COUNT(*) FROM mcp").fetchone()[0]
@@ -437,21 +486,21 @@ def api_db_summary():
             nb_calls = 0
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
     conn.close()
-    return jsonify({
-        "mcps": nb_mcps,
-        "tools": nb_tools,
+    return JSONResponse({
+        "mcps":         nb_mcps,
+        "tools":        nb_tools,
         "capabilities": nb_caps,
-        "calls": nb_calls,
+        "calls":        nb_calls,
     })
 
 
-@app.route("/api/db/mcps")
-def api_db_mcps():
+@app.get("/api/db/mcps")
+async def api_db_mcps():
     """Liste MCPs avec transport + capabilities"""
     if not DB_PATH.exists():
-        return jsonify({"mcps": []})
+        return JSONResponse({"mcps": []})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -474,30 +523,29 @@ def api_db_mcps():
         """).fetchall()
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
     conn.close()
     result = []
     for r in rows:
         result.append({
-            "mcp_id":        r["mcp_id"],
-            "name":          r["name"],
-            "category":      r["category"],
-            "description":   r["description"],
-            "plug_and_play": bool(r["plug_and_play"]),
+            "mcp_id":          r["mcp_id"],
+            "name":            r["name"],
+            "category":        r["category"],
+            "description":     r["description"],
+            "plug_and_play":   bool(r["plug_and_play"]),
             "discovered_from": r["discovered_from"],
-            "transport":     r["transport_type"],
-            "tools_count":   r["tools_count"],
-            "capabilities":  [c for c in (r["capabilities"] or "").split(",") if c],
+            "transport":       r["transport_type"],
+            "tools_count":     r["tools_count"],
+            "capabilities":    [c for c in (r["capabilities"] or "").split(",") if c],
         })
-    return jsonify({"mcps": result})
+    return JSONResponse({"mcps": result})
 
 
-@app.route("/api/db/tools")
-def api_db_tools():
+@app.get("/api/db/tools")
+async def api_db_tools(mcp_id: str | None = Query(default=None)):
     """Tools avec paramètres. ?mcp_id=xxx pour filtrer"""
     if not DB_PATH.exists():
-        return jsonify({"tools": []})
-    mcp_filter = request.args.get("mcp_id")
+        return JSONResponse({"tools": []})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -507,27 +555,27 @@ def api_db_tools():
             FROM tool tl
             LEFT JOIN tool_parameter tp ON tp.tool_id = tl.id
         """
-        params = []
-        if mcp_filter:
+        params: list = []
+        if mcp_id:
             query += " WHERE tl.mcp_id = ?"
-            params.append(mcp_filter)
+            params.append(mcp_id)
         query += " GROUP BY tl.id ORDER BY tl.mcp_id, tl.name"
         rows = conn.execute(query, params).fetchall()
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
     conn.close()
-    result = [dict(r) for r in rows]
-    return jsonify({"tools": result})
+    return JSONResponse({"tools": [dict(r) for r in rows]})
 
 
-@app.route("/api/db/history")
-def api_db_history():
+@app.get("/api/db/history")
+async def api_db_history(
+    limit:  int         = Query(default=100),
+    mcp_id: str | None  = Query(default=None),
+):
     """call_history. ?limit=50&mcp_id=xxx"""
     if not DB_PATH.exists():
-        return jsonify({"history": []})
-    limit    = int(request.args.get("limit", 100))
-    mcp_filter = request.args.get("mcp_id")
+        return JSONResponse({"history": []})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -536,23 +584,22 @@ def api_db_history():
                    duration_ms, started_at, request_json, response_json
             FROM call_history
         """
-        params = []
-        if mcp_filter:
+        params: list = []
+        if mcp_id:
             query += " WHERE mcp_id = ?"
-            params.append(mcp_filter)
+            params.append(mcp_id)
         query += " ORDER BY started_at DESC LIMIT ?"
         params.append(limit)
         rows = conn.execute(query, params).fetchall()
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
     conn.close()
-    result = [dict(r) for r in rows]
-    return jsonify({"history": result})
+    return JSONResponse({"history": [dict(r) for r in rows]})
 
 
-@app.route("/api/db/graph")
-def api_db_graph():
+@app.get("/api/db/graph")
+async def api_db_graph():
     """Données pour le graphe D3 de découverte.
     Retourne nodes[] et edges[].
     Node: {id, name, transport, plug_and_play, tools_count, discovered_count, size}
@@ -561,7 +608,7 @@ def api_db_graph():
     size = 20 + discovered_count * 8 (le nœud grossit s'il a trouvé d'autres MCPs)
     """
     if not DB_PATH.exists():
-        return jsonify({"nodes": [], "edges": []})
+        return JSONResponse({"nodes": [], "edges": []})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -577,7 +624,6 @@ def api_db_graph():
             GROUP BY m.mcp_id
         """).fetchall()
 
-        # Capabilities per MCP
         caps_rows = conn.execute("""
             SELECT mc.mcp_id, GROUP_CONCAT(c.name) AS capabilities
             FROM mcp_capability mc
@@ -586,7 +632,7 @@ def api_db_graph():
         """).fetchall()
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=500)
     conn.close()
 
     caps_map = {r["mcp_id"]: [c for c in (r["capabilities"] or "").split(",") if c]
@@ -605,25 +651,34 @@ def api_db_graph():
     for r in rows:
         dc = discovered_count.get(r["mcp_id"], 0)
         nodes.append({
-            "id":              r["mcp_id"],
-            "name":            r["name"],
-            "transport":       r["transport_type"],
-            "plug_and_play":   bool(r["plug_and_play"]),
-            "tools_count":     r["tools_count"],
-            "capabilities":    caps_map.get(r["mcp_id"], []),
+            "id":               r["mcp_id"],
+            "name":             r["name"],
+            "transport":        r["transport_type"],
+            "plug_and_play":    bool(r["plug_and_play"]),
+            "tools_count":      r["tools_count"],
+            "capabilities":     caps_map.get(r["mcp_id"], []),
             "discovered_count": dc,
-            "size":            20 + dc * 8,
+            "size":             20 + dc * 8,
         })
 
-    return jsonify({"nodes": nodes, "edges": edges})
+    return JSONResponse({"nodes": nodes, "edges": edges})
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 def main():
-    logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
     port = int(os.environ.get("HA_MCP_PORT", "8765"))
-    logger.info("HA-MCP v2 server starting on port %d", port)
-    app.run(host="0.0.0.0", port=port, debug=False)
+    logger.info("HA-MCP v2 server starting on port %d (FastAPI/uvicorn)", port)
+    uvicorn.run(
+        "app.server:app",
+        host="0.0.0.0",
+        port=port,
+        log_level=os.environ.get("HA_MCP_LOG_LEVEL", "info").lower(),
+    )
 
 if __name__ == "__main__":
     main()
