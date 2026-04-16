@@ -579,6 +579,18 @@ async def api_db_history(
         return JSONResponse({"history": []})
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Créer la table si absente (DB prod créée avant cette migration)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS call_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mcp_id TEXT NOT NULL, tool_name TEXT NOT NULL,
+            request_json TEXT NOT NULL, response_json TEXT,
+            response_type TEXT, started_at TEXT NOT NULL,
+            duration_ms INTEGER, session_id TEXT, caller TEXT,
+            FOREIGN KEY (mcp_id) REFERENCES mcp(mcp_id)
+        )
+    """)
+    conn.commit()
     try:
         query = """
             SELECT id, mcp_id, tool_name, response_type AS status,
