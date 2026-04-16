@@ -18,6 +18,8 @@ build/
 **/storage/intermediate/
 **/storage/outputs/
 **/storage/logs/
+# DB runtime (exclure sauf la seed)
 **/database/*.db
+!ha-mcp/database/tool_v2.db
 
 .claude/

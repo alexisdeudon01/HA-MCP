@@ -61,8 +61,15 @@ fi
 # ── DB path ───────────────────────────────────────────────────────────────────
 export HA_MCP_DB_PATH="${STORAGE_PATH}/tool_v2.db"
 
-bashio::log.info "Initializing database..."
-python3 -c "
+# ── DB : copier la seed si absente, sinon garder l'existante ─────────────────
+if [ ! -f "${HA_MCP_DB_PATH}" ]; then
+    if [ -f "/database/tool_v2.db" ]; then
+        bashio::log.info "Copying seeded database..."
+        cp /database/tool_v2.db "${HA_MCP_DB_PATH}"
+        bashio::log.info "Database ready (seeded): ${HA_MCP_DB_PATH}"
+    else
+        bashio::log.info "Initializing empty database..."
+        python3 -c "
 import sqlite3, os
 db = os.environ['HA_MCP_DB_PATH']
 schema = open('/database/schema_v2.sql').read()
@@ -70,8 +77,12 @@ conn = sqlite3.connect(db)
 conn.executescript(schema)
 conn.commit()
 conn.close()
-print('Database ready:', db)
+print('Database ready (empty):', db)
 "
+    fi
+else
+    bashio::log.info "Database exists, keeping: ${HA_MCP_DB_PATH}"
+fi
 
 # ── Lancement du serveur ──────────────────────────────────────────────────────
 bashio::log.info "Starting web server on port 8765..."
