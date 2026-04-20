@@ -58,6 +58,71 @@ app = FastAPI(title="HA-MCP", version="2.0.0")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
+# ── Sync mcp_config.json → DB (bridge dashboard) ─────────────────────────────
+
+def _sync_mcp_config_to_db() -> int:
+    config_file = STORAGE_PATH / "mcp_config.json"
+    if not config_file.exists():
+        logger.warning("sync_config_to_db: mcp_config.json introuvable")
+        return 0
+    with open(config_file) as f:
+        config = json.load(f)
+    mcps = config.get("mcps", [])
+    if not mcps:
+        return 0
+    schema_file = Path(__file__).resolve().parent.parent / "database" / "schema_v2.sql"
+    need_schema = not DB_PATH.exists()
+    conn = sqlite3.connect(DB_PATH)
+    if need_schema and schema_file.exists():
+        conn.executescript(schema_file.read_text())
+        conn.commit()
+    count = 0
+    for mcp in mcps:
+        mcp_id = mcp.get("mcp_id", "")
+        if not mcp_id or mcp.get("status") != "active":
+            continue
+        name = mcp.get("name", mcp_id)
+        req_auth = mcp.get("requires_auth", False)
+        auth_key = mcp.get("auth_key_name", "") or ""
+        ttype = mcp.get("transport", "stdio")
+        command = mcp.get("command", "")
+        args = mcp.get("args", [])
+        description = mcp.get("description", "")
+        caps = mcp.get("capabilities", [])
+        category = caps[0] if caps else "enrichissement"
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("""INSERT INTO mcp (mcp_id,name,version,description,plug_and_play,requires_auth,auth_type,auth_key_name,source,registry_category,discovered_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(mcp_id) DO UPDATE SET name=excluded.name,description=excluded.description,plug_and_play=excluded.plug_and_play,requires_auth=excluded.requires_auth,auth_type=excluded.auth_type,auth_key_name=excluded.auth_key_name,registry_category=excluded.registry_category""", (mcp_id, name, "1.0.0", description, int(not req_auth), int(req_auth), "api_key" if req_auth else "none", auth_key if req_auth else None, "discovered", category, now))
+        test_logs = mcp.get("test_log", [])
+        probe_ok = any(t.get("status") == "pass" for t in test_logs)
+        probe_at = test_logs[-1].get("timestamp", now) if test_logs else now
+        conn.execute("""INSERT INTO transport (mcp_id,type,executor,command,args_json,url,last_probe_at,last_probe_ok,last_probe_error) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(mcp_id,type) DO UPDATE SET executor=excluded.executor,command=excluded.command,args_json=excluded.args_json,last_probe_at=excluded.last_probe_at,last_probe_ok=excluded.last_probe_ok""", (mcp_id, ttype, command.split("/")[-1] if command else "npx", command, json.dumps(args), None, probe_at, int(probe_ok), None))
+        tools = mcp.get("tools", [])
+        if not tools:
+            for tl in test_logs:
+                if tl.get("tools"):
+                    tools = tl["tools"]
+                    break
+        for tool in tools:
+            tname = tool if isinstance(tool, str) else tool.get("name", "")
+            tdesc = "" if isinstance(tool, str) else tool.get("description", "")
+            if tname:
+                conn.execute("""INSERT INTO tool (mcp_id,name,description,timeout_ms) VALUES (?,?,?,?) ON CONFLICT(mcp_id,name) DO UPDATE SET description=excluded.description""", (mcp_id, tname, tdesc, 10000))
+        count += 1
+    conn.commit()
+    conn.close()
+    logger.info("sync_config_to_db: %d MCPs synchronisés", count)
+    return count
+
+
+@app.on_event("startup")
+async def on_startup():
+    try:
+        synced = _sync_mcp_config_to_db()
+        logger.info("Startup sync: %d MCPs en DB", synced)
+    except Exception as e:
+        logger.error("Startup sync failed: %s", e, exc_info=True)
+
+
 # ── Registry dynamique (lit la DB à chaque appel — hot reload) ────────────────
 
 def _load_mcp_registry(api_keys: dict | None = None) -> list[dict]:
