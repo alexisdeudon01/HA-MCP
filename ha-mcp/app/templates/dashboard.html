@@ -1403,6 +1403,37 @@ function startSSE(sessionId) {
       else if (data.type === 'step_complete')    { updatePipelineStep(data.step_id,'completed',data); appendLog(data.type,data.step_id,data.step_name,'Terminé ('+(data.duration_ms||'?')+'ms)'); }
       else if (data.type === 'step_failed')      { updatePipelineStep(data.step_id,'failed',data);    appendLog(data.type,data.step_id,data.step_name,'FAILED: '+(data.error||''),true); }
       else if (data.type === 'pipeline_complete'){ sseSource.close(); currentResults = data.results; }
+      else if (data.type === 'done') {
+        // Pipeline termine (succes ou echec) : recuperer resultats finaux et re-enable le bouton
+        sseSource.close();
+        fetch(BASE + '/api/analyze/status/' + sessionId)
+          .then(r => r.json())
+          .then(final => {
+            currentResults = final;
+            const btn    = document.getElementById('submitBtn');
+            const status = document.getElementById('analyzeStatus');
+            btn.disabled = false;
+            btn.textContent = 'Launch 2-Stage Analysis';
+            if (final.status === 'completed') {
+              status.style.background  = 'var(--green-bg)';
+              status.style.borderColor = 'var(--green)';
+              status.textContent       = 'Analyse terminée !';
+              const gen = (final.steps || {})['2.6'];
+              const summary = document.getElementById('resultSummary');
+              summary.innerHTML =
+                '<div class="card stat"><div class="val">'+(gen?gen.recommendation:'?')+'</div><div class="lbl">Recommendation</div></div>' +
+                '<div class="card stat"><div class="val">'+(gen?gen.overall_score:'?')+'</div><div class="lbl">Score</div></div>' +
+                '<div class="card stat"><div class="val">'+(gen?gen.artifacts_count:'?')+'</div><div class="lbl">Artifacts</div></div>';
+              document.getElementById('resultJson').textContent = JSON.stringify(final, null, 2);
+              document.getElementById('resultsCard').style.display = 'block';
+            } else {
+              status.style.background  = 'var(--red-bg)';
+              status.style.borderColor = 'var(--red)';
+              status.textContent       = 'Échec : ' + (final.error || 'inconnu');
+            }
+          })
+          .catch(err => console.warn('Fetch final status failed:', err));
+      }
     } catch(err) { console.warn('SSE parse error:', err); }
   };
 }
@@ -1428,39 +1459,53 @@ document.getElementById('analyzeForm').addEventListener('submit', async (e) => {
   try {
     const resp = await fetch(BASE + '/api/analyze', {method:'POST', body: formData});
     const data = await resp.json();
-    currentResults = data;
+
+    // Cas 1 : pipeline deja en cours cote serveur (409 Conflict)
+    if (resp.status === 409 || data.status === 'busy') {
+      status.style.background  = 'var(--orange-bg)';
+      status.style.borderColor = 'var(--orange)';
+      status.textContent = 'Un pipeline tourne déjà (session ' + (data.running_session_id || '?').slice(0,8) + '). Attendez sa fin.';
+      appendLog('error','--','--', data.error || 'busy', true);
+      btn.disabled = false;
+      btn.textContent = 'Launch 2-Stage Analysis';
+      return;
+    }
+
+    // Cas 2 : erreur serveur
     if (data.error) {
       status.style.background  = 'var(--red-bg)';
       status.style.borderColor = 'var(--red)';
       status.textContent = 'Erreur : ' + data.error;
       appendLog('error','--','--', data.error, true);
-    } else {
-      status.style.background  = 'var(--green-bg)';
-      status.style.borderColor = 'var(--green)';
-      status.textContent = 'Analyse terminée !';
-      if (data.steps) {
-        Object.entries(data.steps).forEach(([id, step]) => {
-          updatePipelineStep(id, step.status || 'completed', step);
-          appendLog(step.status === 'failed' ? 'step_failed' : 'step_complete', id, '',
-            step.status + ' (' + (step.duration_ms||'?') + 'ms)', step.status === 'failed');
-        });
-      }
-      const gen = data.steps && data.steps['2.6'];
-      const summary = document.getElementById('resultSummary');
-      summary.innerHTML =
-        '<div class="card stat"><div class="val">'+(gen?gen.recommendation:'?')+'</div><div class="lbl">Recommendation</div></div>' +
-        '<div class="card stat"><div class="val">'+(gen?gen.overall_score:'?')+'</div><div class="lbl">Score</div></div>' +
-        '<div class="card stat"><div class="val">'+(gen?gen.artifacts_count:'?')+'</div><div class="lbl">Artifacts</div></div>';
-      document.getElementById('resultJson').textContent = JSON.stringify(data, null, 2);
-      document.getElementById('resultsCard').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Launch 2-Stage Analysis';
+      return;
     }
+
+    // Cas 3 : pipeline demarre en background. Brancher le SSE, laisser le bouton disabled
+    // jusqu'a l'event 'done' (gere dans startSSE).
+    if (!data.session_id) {
+      status.style.background  = 'var(--red-bg)';
+      status.style.borderColor = 'var(--red)';
+      status.textContent = 'Réponse serveur invalide : ' + JSON.stringify(data);
+      btn.disabled = false;
+      btn.textContent = 'Launch 2-Stage Analysis';
+      return;
+    }
+    currentResults = data;
+    status.style.background  = '#0d1f3c';
+    status.style.borderColor = 'var(--blue)';
+    status.textContent = 'Pipeline en cours… session ' + data.session_id.slice(0,8);
+    appendLog('system','--','--','Session ' + data.session_id + ' démarrée');
+    startSSE(data.session_id);
+    // Le bouton reste désactivé jusqu'à l'event 'done' du SSE.
   } catch(err) {
     status.style.background = 'var(--red-bg)';
     status.textContent = 'Erreur : ' + err.message;
     appendLog('error','--','--', err.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Launch 2-Stage Analysis';
   }
-  btn.disabled = false;
-  btn.textContent = 'Launch 2-Stage Analysis';
 });
 
 // ─────────────────────────────────────────────────────────

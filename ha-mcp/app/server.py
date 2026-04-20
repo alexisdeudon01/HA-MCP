@@ -370,6 +370,22 @@ async def analyze(
     if not offer_pdf.filename or not cv_pdf.filename:
         return JSONResponse({"error": "Empty filenames"}, status_code=400)
 
+    # Anti-double-submit : refuse si un pipeline tourne deja.
+    # Sans ce garde, un double-clic frontend (ou un retry reseau) lancait
+    # deux pipelines en parallele avec des session_id differents, doublant
+    # la consommation API et ecrasant les fichiers partages.
+    running = [sid for sid, s in _sessions.items() if s.get("status") == "running"]
+    if running:
+        logger.warning("Pipeline deja en cours (%s) - POST refuse", running[0])
+        return JSONResponse(
+            {
+                "error":              "Un pipeline tourne deja. Attendez sa fin.",
+                "status":             "busy",
+                "running_session_id": running[0],
+            },
+            status_code=409,
+        )
+
     session_id = str(uuid.uuid4())
     upload_dir = STORAGE_PATH / "inputs" / session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
